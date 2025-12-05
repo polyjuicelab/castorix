@@ -108,8 +108,76 @@ impl EnsProof {
                 })?
                 .clone()
         } else {
-            // Use the default key manager
-            self.key_manager.clone()
+            // Try to automatically load custody key for the FID
+            let custody_key_file = match crate::core::crypto::encrypted_storage::EncryptedEthKeyManager::custody_key_file(fid) {
+                Ok(path) => path,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "❌ Failed to get custody key file path for FID {}: {}\n💡 Please import your custody key first: castorix custody import {}",
+                        fid, e, fid
+                    ));
+                }
+            };
+
+            if !std::path::Path::new(&custody_key_file).exists() {
+                return Err(anyhow::anyhow!(
+                    "❌ No custody key found for FID: {}\n💡 Please import your custody key first: castorix custody import {}\n💡 Or use '--wallet-name' to specify a different wallet",
+                    fid, fid
+                ));
+            }
+
+            // Load the encrypted custody key manager
+            let encrypted_manager = match crate::core::crypto::encrypted_storage::EncryptedEthKeyManager::load_from_file(
+                &custody_key_file,
+            ) {
+                Ok(manager) => manager,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "❌ Failed to load custody key file for FID {}: {}\n💡 Please import your custody key again: castorix custody import {}",
+                        fid, e, fid
+                    ));
+                }
+            };
+
+            // Check if key exists for this FID
+            if !encrypted_manager.has_key(fid) {
+                return Err(anyhow::anyhow!(
+                    "❌ No custody key found for FID: {}\n💡 Please import your custody key first: castorix custody import {}",
+                    fid, fid
+                ));
+            }
+
+            // Prompt for password
+            let password = match crate::core::crypto::encrypted_storage::prompt_password(&format!(
+                "Enter password for custody wallet (FID {fid}): "
+            )) {
+                Ok(pwd) => pwd,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "❌ Failed to prompt for password: {}\n💡 Please try again or import your custody key: castorix custody import {}",
+                        e, fid
+                    ));
+                }
+            };
+
+            // Get the wallet
+            let wallet = match encrypted_manager.get_wallet(fid, &password) {
+                Ok(w) => w,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "❌ Failed to decrypt custody key for FID {}: {}\n💡 Please check your password or import your custody key again: castorix custody import {}",
+                        fid, e, fid
+                    ));
+                }
+            };
+
+            // Extract private key from wallet and create KeyManager
+            let private_key_bytes = wallet.signer().to_bytes();
+            KeyManager::from_private_key(&hex::encode(private_key_bytes))
+                .map_err(|e| anyhow::anyhow!(
+                    "❌ Failed to create key manager from custody key for FID {}: {}\n💡 Please import your custody key again: castorix custody import {}",
+                    fid, e, fid
+                ))?
         };
 
         // Verify domain ownership with the selected key manager

@@ -112,4 +112,4 @@ devlog.md
 # Documentation - only README.md is allowed
 *.md
 !README.md
-
+snapchain

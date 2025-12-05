@@ -51,9 +51,19 @@ impl EnsProof {
         let signature =
             Signature::try_from(signature_bytes).with_context(|| "Failed to parse signature")?;
 
-        // Verify the signature
-        self.key_manager
-            .verify_signature(&message, &signature)
-            .await
+        // Recover the address from the signature
+        let recovered_address = signature
+            .recover(message)
+            .with_context(|| "Failed to recover address from signature")?;
+
+        // Get the owner address from the proof
+        let owner_bytes = proof.get_owner();
+        if owner_bytes.len() != 20 {
+            return Ok(false);
+        }
+        let owner_address = Address::from_slice(owner_bytes);
+
+        // Verify that the recovered address matches the owner address in the proof
+        Ok(recovered_address == owner_address)
     }
 }

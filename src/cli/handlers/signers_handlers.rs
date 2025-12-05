@@ -525,9 +525,17 @@ async fn handle_add_signer(
             metadata.len()
         );
 
+        // Get the custody wallet for raw transaction
+        let custody_wallet = contract_client
+            .wallet
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Custody wallet not available"))?;
+
         let result = contract_client
             .key_gateway
-            .add_for(
+            .add_for_raw(
+                &contract_client.provider,
+                custody_wallet,
                 fid_info.custody,
                 1, // Ed25519 key type
                 public_key.clone(),
