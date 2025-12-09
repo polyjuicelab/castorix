@@ -127,17 +127,18 @@ impl EnsProof {
             }
 
             // Load the encrypted custody key manager
-            let encrypted_manager = match crate::core::crypto::encrypted_storage::EncryptedEthKeyManager::load_from_file(
-                &custody_key_file,
-            ) {
-                Ok(manager) => manager,
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
+            let encrypted_manager =
+                match crate::core::crypto::encrypted_storage::EncryptedEthKeyManager::load_from_file(
+                    &custody_key_file,
+                ) {
+                    Ok(manager) => manager,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
                         "❌ Failed to load custody key file for FID {}: {}\n💡 Please import your custody key again: castorix custody import {}",
                         fid, e, fid
                     ));
-                }
-            };
+                    }
+                };
 
             // Check if key exists for this FID
             if !encrypted_manager.has_key(fid) {

@@ -1,14 +1,17 @@
 //! Hub API handlers
 
-use axum::{
-    extract::{Path, Query, State},
-    Json,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
 
-use crate::api::types::{ApiError, ApiResponse};
+use axum::extract::Path;
+use axum::extract::Query;
+use axum::extract::State;
+use axum::Json;
+use serde::Deserialize;
+use serde::Serialize;
+use serde_json::Value;
+
+use crate::api::types::ApiError;
+use crate::api::types::ApiResponse;
 use crate::core::client::FarcasterClient;
 
 /// Shared state for Hub handlers
@@ -64,7 +67,9 @@ pub async fn get_followers(
     Query(_params): Query<ListParams>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("Followers endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "Followers endpoint not implemented yet".to_string(),
+    ))
 }
 
 /// Get following for a FID
@@ -74,7 +79,9 @@ pub async fn get_following(
     Query(_params): Query<ListParams>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("Following endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "Following endpoint not implemented yet".to_string(),
+    ))
 }
 
 /// Get verified Ethereum addresses
@@ -83,7 +90,9 @@ pub async fn get_eth_addresses(
     Path(_fid): Path<u64>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("ETH addresses endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "ETH addresses endpoint not implemented yet".to_string(),
+    ))
 }
 
 /// Get ENS domains
@@ -92,7 +101,9 @@ pub async fn get_ens_domains(
     Path(_fid): Path<u64>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("ENS domains endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "ENS domains endpoint not implemented yet".to_string(),
+    ))
 }
 
 /// Get custody address
@@ -101,7 +112,9 @@ pub async fn get_custody_address(
     Path(_fid): Path<u64>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("Custody address endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "Custody address endpoint not implemented yet".to_string(),
+    ))
 }
 
 /// Get casts by FID
@@ -111,7 +124,9 @@ pub async fn get_casts(
     Query(_params): Query<ListParams>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("Casts endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "Casts endpoint not implemented yet".to_string(),
+    ))
 }
 
 /// Check spam status
@@ -126,12 +141,12 @@ pub async fn check_spam(
 ) -> Result<Json<ApiResponse<SpamCheckResponse>>, ApiError> {
     // Use the spam checker
     use crate::mcp::utils::SpamChecker;
-    
+
     let is_spam = match SpamChecker::load() {
         Ok(checker) => checker.is_spam(fid),
         Err(_) => false, // If spam checker fails to load, assume not spam
     };
-    
+
     Ok(Json(ApiResponse::success(SpamCheckResponse {
         fid,
         is_spam,
@@ -143,6 +158,7 @@ pub async fn get_hub_info(
     State(_state): State<HubState>,
 ) -> Result<Json<ApiResponse<Value>>, ApiError> {
     // Placeholder - FarcasterClient doesn't have this method yet
-    Err(ApiError::InternalError("Hub info endpoint not implemented yet".to_string()))
+    Err(ApiError::InternalError(
+        "Hub info endpoint not implemented yet".to_string(),
+    ))
 }
-

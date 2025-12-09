@@ -1,11 +1,12 @@
 //! API route definitions
 
-use axum::{
-    routing::get,
-    Router,
-};
+use axum::routing::get;
+use axum::Router;
 
-use super::handlers::{contract, ens, health, hub};
+use super::handlers::contract;
+use super::handlers::ens;
+use super::handlers::health;
+use super::handlers::hub;
 
 /// Build the main API router
 pub fn build_router(
@@ -17,7 +18,6 @@ pub fn build_router(
     let mut app = Router::new()
         // Health check
         .route("/health", get(health::health_check))
-        
         // Hub routes
         .route("/api/hub/info", get(hub::get_hub_info))
         .route("/api/hub/users/:fid", get(hub::get_user))
@@ -36,9 +36,12 @@ pub fn build_router(
     if let Some(ens_state) = ens_state {
         let ens_router = Router::new()
             .route("/api/ens/resolve/:domain", get(ens::resolve_domain))
-            .route("/api/ens/verify/:domain/:address", get(ens::verify_ownership))
+            .route(
+                "/api/ens/verify/:domain/:address",
+                get(ens::verify_ownership),
+            )
             .with_state(ens_state);
-        
+
         app = app.merge(ens_router);
     }
 
@@ -46,13 +49,18 @@ pub fn build_router(
     if let Some(contract_state) = contract_state {
         let contract_router = Router::new()
             .route("/api/contract/fid/price", get(contract::get_fid_price))
-            .route("/api/contract/storage/price/:units", get(contract::get_storage_price))
-            .route("/api/contract/address/:address/fid", get(contract::check_address_fid))
+            .route(
+                "/api/contract/storage/price/:units",
+                get(contract::get_storage_price),
+            )
+            .route(
+                "/api/contract/address/:address/fid",
+                get(contract::check_address_fid),
+            )
             .with_state(contract_state);
-        
+
         app = app.merge(contract_router);
     }
 
     app
 }
-

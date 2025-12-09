@@ -23,4 +23,3 @@ pub async fn handle_api_command(host: String, port: u16) -> Result<()> {
 
     server.serve().await
 }
-

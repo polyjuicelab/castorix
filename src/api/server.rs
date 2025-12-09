@@ -1,17 +1,22 @@
 //! API server implementation
 
-use anyhow::{Context, Result};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+
+use anyhow::Context;
+use anyhow::Result;
+use tower_http::cors::Any;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
-use crate::api::handlers::{contract, ens, hub};
+use crate::api::handlers::contract;
+use crate::api::handlers::ens;
+use crate::api::handlers::hub;
 use crate::api::routes;
 use crate::core::client::FarcasterClient;
-use crate::farcaster::contracts::FarcasterContractClient;
 use crate::farcaster::contracts::ContractAddresses;
+use crate::farcaster::contracts::FarcasterContractClient;
 
 /// API server configuration
 pub struct ApiServer {
@@ -39,11 +44,7 @@ impl Default for ApiServer {
 
 impl ApiServer {
     /// Create a new API server with custom configuration
-    pub fn new(
-        host: impl Into<String>,
-        port: u16,
-        hub_url: impl Into<String>,
-    ) -> Self {
+    pub fn new(host: impl Into<String>, port: u16, hub_url: impl Into<String>) -> Self {
         Self {
             host: host.into(),
             port,
@@ -70,9 +71,7 @@ impl ApiServer {
         // SECURITY: Create Hub client WITHOUT key manager (read-only mode)
         // This ensures the API server can NEVER sign messages or access private keys
         let hub_client = Arc::new(FarcasterClient::new(self.hub_url.clone(), None));
-        let hub_state = hub::HubState {
-            client: hub_client,
-        };
+        let hub_state = hub::HubState { client: hub_client };
 
         // Create ENS state if RPC URL is available
         let ens_state = if self.eth_rpc_url.is_some() {
@@ -148,11 +147,8 @@ impl ApiServer {
             .await
             .context("Failed to bind to address")?;
 
-        axum::serve(listener, app)
-            .await
-            .context("Server error")?;
+        axum::serve(listener, app).await.context("Server error")?;
 
         Ok(())
     }
 }
-

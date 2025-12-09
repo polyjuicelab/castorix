@@ -1,11 +1,11 @@
 //! API type definitions
 
-use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    Json,
-};
-use serde::{Deserialize, Serialize};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::response::Response;
+use axum::Json;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Standard API response wrapper
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,4 +61,3 @@ impl From<anyhow::Error> for ApiError {
         ApiError::InternalError(err.to_string())
     }
 }
-

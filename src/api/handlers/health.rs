@@ -1,7 +1,8 @@
 //! Health check endpoints
 
 use axum::Json;
-use serde_json::{json, Value};
+use serde_json::json;
+use serde_json::Value;
 
 /// Health check endpoint
 pub async fn health_check() -> Json<Value> {
@@ -11,4 +12,3 @@ pub async fn health_check() -> Json<Value> {
         "version": env!("CARGO_PKG_VERSION")
     }))
 }
-
