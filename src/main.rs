@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
                     let hub_client = FarcasterClient::read_only(hub_url);
                     CliHandler::handle_hub_command(action, &hub_client).await?;
                 }
-                HubCommands::SubmitProof { .. } => {
+                HubCommands::SubmitProof { .. } | HubCommands::Cast { .. } => {
                     // These commands handle their own key management
                     let hub_client = FarcasterClient::read_only(hub_url);
                     CliHandler::handle_hub_command(action, &hub_client).await?;

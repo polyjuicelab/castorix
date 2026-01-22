@@ -329,7 +329,7 @@ class FarcasterWorkflowTest:
             print(f"   ❌ FID registration failed")
             print(f"   📝 stdout: {stdout}")
             print(f"   📝 stderr: {stderr}")
-            # 不允许降级，必须成功注册FID
+            # Do not downgrade; FID registration must succeed
             raise Exception("FID registration failed - test cannot continue without successful registration")
     
     def test_storage_rental(self):

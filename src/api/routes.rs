@@ -1,8 +1,10 @@
 //! API route definitions
 
 use axum::routing::get;
+use axum::routing::post;
 use axum::Router;
 
+use super::handlers::caster;
 use super::handlers::contract;
 use super::handlers::ens;
 use super::handlers::health;
@@ -13,6 +15,7 @@ pub fn build_router(
     hub_state: hub::HubState,
     ens_state: Option<ens::EnsState>,
     contract_state: Option<contract::ContractState>,
+    caster_state: Option<caster::CasterState>,
 ) -> Router {
     // Create base router with Hub routes
     let mut app = Router::new()
@@ -60,6 +63,14 @@ pub fn build_router(
             .with_state(contract_state);
 
         app = app.merge(contract_router);
+    }
+
+    if let Some(caster_state) = caster_state {
+        let caster_router = Router::new()
+            .route("/api/caster/cast", post(caster::submit_cast))
+            .with_state(caster_state);
+
+        app = app.merge(caster_router);
     }
 
     app

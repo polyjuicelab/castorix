@@ -4,8 +4,11 @@
 //!
 //! # Security
 //!
-//! This API server is designed as a **READ-ONLY** interface that **NEVER** touches private keys.
-//! All operations are query-only and do not require authentication.
+//! This API server is designed as a **READ-ONLY** interface by default and **NEVER** touches
+//! private keys. All operations are query-only and do not require authentication.
+//!
+//! When started in "caster" mode, it exposes a cast submission endpoint and uses local
+//! Ed25519 keys. **Do not expose caster mode publicly.**
 //!
 //! The server is safe to expose to the internet as it:
 //! - Does NOT have access to private keys

@@ -97,7 +97,9 @@ impl CliHandler {
     /// Handle API server commands
     pub async fn handle_api_command(command: ApiCommands) -> Result<()> {
         match command {
-            ApiCommands::Serve { host, port } => api_handlers::handle_api_command(host, port).await,
+            ApiCommands::Serve { host, port, mode } => {
+                api_handlers::handle_api_command(host, port, mode).await
+            }
         }
     }
 }

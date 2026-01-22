@@ -9,6 +9,7 @@ pub enum ApiCommands {
     /// The server provides a traditional RESTful API with /api/* routes.
     ///
     /// Example: castorix api serve --port 3000
+    /// Example: castorix api serve caster --fid 12345 --host 127.0.0.1 --port 3001
     Serve {
         /// Host to bind to (default: 0.0.0.0)
         #[arg(long, default_value = "0.0.0.0")]
@@ -17,6 +18,31 @@ pub enum ApiCommands {
         /// Port to bind to (default: 3000)
         #[arg(long, default_value = "3000")]
         port: u16,
+
+        /// Optional serve mode (read-only by default)
+        #[command(subcommand)]
+        mode: Option<ApiServeMode>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ApiServeMode {
+    /// ✍️ Enable cast submission endpoint
+    ///
+    /// Starts the API server with a cast submission endpoint that accepts JSON.
+    /// ⚠️  This mode uses local Ed25519 keys and should NOT be exposed publicly.
+    ///
+    /// Example: castorix api serve caster --fid 12345
+    Caster {
+        /// Farcaster ID (FID) to post as
+        #[arg(long)]
+        fid: u64,
+        /// Host to bind to (overrides --host)
+        #[arg(long)]
+        host: Option<String>,
+        /// Port to bind to (overrides --port)
+        #[arg(long)]
+        port: Option<u16>,
     },
 }
 
@@ -663,6 +689,34 @@ pub enum HubCommands {
         /// Show full JSON data structure instead of formatted output
         #[arg(long)]
         json: bool,
+    },
+
+    /// ✍️ Submit a new cast
+    ///
+    /// Post a new cast to the Farcaster Hub using your Ed25519 signer key.
+    /// This requires a local Ed25519 key for the FID.
+    ///
+    /// Example: castorix hub cast 12345 "Hello Farcaster!"
+    /// Example: castorix hub cast 12345 "Replying!" --parent-cast-fid 42 --parent-cast-hash 0xabc...
+    /// Example: castorix hub cast 12345 "Sharing" --parent-url https://example.com
+    /// Example: castorix hub cast 12345 "Check this" --embed-url https://example.com
+    Cast {
+        /// Farcaster ID (FID) to post as
+        fid: u64,
+        /// Cast text content
+        text: String,
+        /// Parent cast FID (for replies)
+        #[arg(long, requires = "parent_cast_hash", conflicts_with = "parent_url")]
+        parent_cast_fid: Option<u64>,
+        /// Parent cast hash (hex, for replies)
+        #[arg(long, requires = "parent_cast_fid", conflicts_with = "parent_url")]
+        parent_cast_hash: Option<String>,
+        /// Parent URL to attach (mutually exclusive with parent cast)
+        #[arg(long, conflicts_with = "parent_cast_fid")]
+        parent_url: Option<String>,
+        /// Embed URL(s) to attach
+        #[arg(long)]
+        embed_url: Vec<String>,
     },
 }
 

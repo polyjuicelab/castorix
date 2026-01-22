@@ -108,6 +108,25 @@ pub async fn handle_hub_command(
         HubCommands::Casts { fid, limit, json } => {
             handle_casts(hub_client, fid, limit, json).await?;
         }
+        HubCommands::Cast {
+            fid,
+            text,
+            parent_cast_fid,
+            parent_cast_hash,
+            parent_url,
+            embed_url,
+        } => {
+            handle_submit_cast(
+                hub_client,
+                fid,
+                text,
+                parent_cast_fid,
+                parent_cast_hash,
+                parent_url,
+                embed_url,
+            )
+            .await?;
+        }
     }
     Ok(())
 }
@@ -923,6 +942,46 @@ async fn handle_casts(
             }
         }
         Err(e) => println!("❌ Failed to get casts: {e}"),
+    }
+
+    Ok(())
+}
+
+async fn handle_submit_cast(
+    hub_client: &crate::core::client::hub_client::FarcasterClient,
+    fid: u64,
+    text: String,
+    parent_cast_fid: Option<u64>,
+    parent_cast_hash: Option<String>,
+    parent_url: Option<String>,
+    embed_urls: Vec<String>,
+) -> Result<()> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        println!("❌ Cast text cannot be empty");
+        return Ok(());
+    }
+
+    let parent_cast_id = match (parent_cast_fid, parent_cast_hash) {
+        (Some(fid), Some(hash)) => Some(crate::core::client::hub_client::CastId { fid, hash }),
+        (None, None) => None,
+        _ => {
+            println!("❌ Both --parent-cast-fid and --parent-cast-hash are required");
+            return Ok(());
+        }
+    };
+
+    println!("📣 Submitting cast for FID: {fid}");
+    let result = hub_client
+        .submit_cast(fid, text, parent_cast_id, parent_url, embed_urls)
+        .await;
+
+    match result {
+        Ok(response) => {
+            println!("✅ Cast submitted successfully!");
+            println!("📋 Response: {response:?}");
+        }
+        Err(e) => println!("❌ Failed to submit cast: {e}"),
     }
 
     Ok(())

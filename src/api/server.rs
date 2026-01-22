@@ -10,11 +10,14 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
+use crate::api::handlers::caster;
 use crate::api::handlers::contract;
 use crate::api::handlers::ens;
 use crate::api::handlers::hub;
 use crate::api::routes;
 use crate::core::client::FarcasterClient;
+use crate::core::crypto::encrypted_storage::prompt_password;
+use crate::core::crypto::encrypted_storage::EncryptedEd25519KeyManager;
 use crate::farcaster::contracts::ContractAddresses;
 use crate::farcaster::contracts::FarcasterContractClient;
 
@@ -26,6 +29,7 @@ pub struct ApiServer {
     pub eth_rpc_url: Option<String>,
     pub eth_base_rpc_url: Option<String>,
     pub eth_op_rpc_url: Option<String>,
+    pub caster_fid: Option<u64>,
 }
 
 impl Default for ApiServer {
@@ -38,6 +42,7 @@ impl Default for ApiServer {
             eth_rpc_url: std::env::var("ETH_RPC_URL").ok(),
             eth_base_rpc_url: std::env::var("ETH_BASE_RPC_URL").ok(),
             eth_op_rpc_url: std::env::var("ETH_OP_RPC_URL").ok(),
+            caster_fid: None,
         }
     }
 }
@@ -57,21 +62,61 @@ impl ApiServer {
     ///
     /// # Security
     ///
-    /// This API server is designed as a READ-ONLY interface that NEVER touches private keys.
-    /// All clients are initialized without key managers to prevent any signing operations.
+    /// This API server is READ-ONLY by default and NEVER touches private keys.
+    /// When started in "caster" mode, it enables cast submission and uses local Ed25519 keys.
     ///
-    /// The server can safely be exposed to the internet as it only performs query operations.
+    /// ⚠️  Caster mode should NOT be exposed to the internet.
     pub async fn serve(self) -> Result<()> {
         info!("🚀 Starting Castorix REST API server");
         info!("   Host: {}", self.host);
         info!("   Port: {}", self.port);
         info!("   Hub URL: {}", self.hub_url);
-        info!("🔒 Security: READ-ONLY mode (no private key access)");
+        if let Some(fid) = self.caster_fid {
+            info!("🔓 Security: CASTER mode enabled (FID: {fid})");
+            info!("⚠️  Do NOT expose this server publicly");
+        } else {
+            info!("🔒 Security: READ-ONLY mode (no private key access)");
+        }
 
-        // SECURITY: Create Hub client WITHOUT key manager (read-only mode)
-        // This ensures the API server can NEVER sign messages or access private keys
+        // SECURITY: Create Hub client WITHOUT key manager (read-only by default)
         let hub_client = Arc::new(FarcasterClient::new(self.hub_url.clone(), None));
         let hub_state = hub::HubState { client: hub_client };
+
+        let caster_state = if let Some(fid) = self.caster_fid {
+            let keys_file = EncryptedEd25519KeyManager::default_keys_file()?;
+            let ed25519_manager = EncryptedEd25519KeyManager::load_from_file(&keys_file)?;
+
+            if !ed25519_manager.has_key(fid) {
+                anyhow::bail!(
+                    "❌ No Ed25519 key found for FID: {}\n💡 Please generate or import an Ed25519 key first:\n   castorix hub key generate {}\n   castorix hub key import {}",
+                    fid,
+                    fid,
+                    fid
+                );
+            }
+
+            let password = match std::env::var("CASTORIX_CASTER_PASSWORD").ok() {
+                Some(value) if !value.is_empty() => value,
+                _ => prompt_password(&format!("Enter password for FID {fid}: "))?,
+            };
+
+            ed25519_manager
+                .get_signing_key(fid, &password)
+                .map_err(|err| {
+                    anyhow::anyhow!("❌ Failed to decrypt Ed25519 key for FID {}: {}", fid, err)
+                })?;
+
+            info!("✅ Ed25519 key unlocked for FID: {fid}");
+            println!("✅ Ed25519 key unlocked for FID: {fid}");
+
+            Some(caster::CasterState {
+                client: hub_state.client.clone(),
+                fid,
+                password: Some(password),
+            })
+        } else {
+            None
+        };
 
         // Create ENS state if RPC URL is available
         let ens_state = if self.eth_rpc_url.is_some() {
@@ -105,7 +150,7 @@ impl ApiServer {
         let has_contract = contract_state.is_some();
 
         // Build router
-        let app = routes::build_router(hub_state, ens_state, contract_state)
+        let app = routes::build_router(hub_state, ens_state, contract_state, caster_state)
             .layer(
                 CorsLayer::new()
                     .allow_origin(Any)
@@ -121,6 +166,8 @@ impl ApiServer {
 
         info!("🎯 API server listening on http://{}", addr);
         info!("📚 Available endpoints:");
+        println!("🚀 Server listening on http://{}", addr);
+        println!("📚 Available endpoints:");
         info!("   GET  /health - Health check");
         info!("   GET  /api/hub/info - Hub information");
         info!("   GET  /api/hub/users/:fid - User info");
@@ -130,6 +177,12 @@ impl ApiServer {
         info!("   GET  /api/hub/users/:fid/following - Following");
         info!("   GET  /api/hub/users/:fid/casts - User casts");
         info!("   GET  /api/hub/spam/:fid - Spam check");
+
+        if let Some(fid) = self.caster_fid {
+            info!("   POST /api/caster/cast - Submit cast (JSON)");
+            println!("   POST /api/caster/cast - Submit cast (JSON)");
+            println!("🔗 Caster FID: {fid}");
+        }
 
         if has_ens {
             info!("   GET  /api/ens/resolve/:domain - Resolve ENS");

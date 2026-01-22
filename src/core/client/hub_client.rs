@@ -4,11 +4,16 @@ use chrono::Utc;
 use ed25519_dalek::Signer as Ed25519Signer;
 use ed25519_dalek::SigningKey;
 use protobuf::Message as ProtobufMessage;
+use protobuf::RepeatedField;
 use reqwest::Client;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::core::crypto::key_manager::KeyManager;
+use crate::core::protocol::message::CastAddBody;
+use crate::core::protocol::message::CastId as ProtoCastId;
+use crate::core::protocol::message::CastType;
+use crate::core::protocol::message::Embed;
 use crate::core::protocol::message::FarcasterNetwork;
 use crate::core::protocol::message::HashScheme;
 use crate::core::protocol::message::Message;
@@ -287,6 +292,140 @@ impl FarcasterClient {
         self.submit_message(&message).await
     }
 
+    /// Submit a cast to Farcaster Hub using Ed25519 key
+    ///
+    /// # Arguments
+    /// * `fid` - The Farcaster ID to post as
+    /// * `text` - Cast text content
+    /// * `parent_cast_id` - Optional parent cast (for replies)
+    /// * `parent_url` - Optional parent URL (mutually exclusive with parent cast)
+    /// * `embed_urls` - Optional embed URLs to attach
+    ///
+    /// # Returns
+    /// * `Result<HubResponse>` - The hub response or an error
+    pub async fn submit_cast(
+        &self,
+        fid: u64,
+        text: String,
+        parent_cast_id: Option<CastId>,
+        parent_url: Option<String>,
+        embed_urls: Vec<String>,
+    ) -> Result<HubResponse> {
+        // Prompt for password
+        let password = crate::core::crypto::encrypted_storage::prompt_password(&format!(
+            "Enter password for FID {fid}: "
+        ))?;
+
+        self.submit_cast_with_password(fid, text, parent_cast_id, parent_url, embed_urls, &password)
+            .await
+    }
+
+    /// Submit a cast to Farcaster Hub using Ed25519 key with a provided password
+    pub async fn submit_cast_with_password(
+        &self,
+        fid: u64,
+        text: String,
+        parent_cast_id: Option<CastId>,
+        parent_url: Option<String>,
+        embed_urls: Vec<String>,
+        password: &str,
+    ) -> Result<HubResponse> {
+        if parent_cast_id.is_some() && parent_url.is_some() {
+            anyhow::bail!("❌ parent_cast_id and parent_url are mutually exclusive");
+        }
+
+        // Load encrypted Ed25519 key manager
+        let keys_file =
+            crate::core::crypto::encrypted_storage::EncryptedEd25519KeyManager::default_keys_file(
+            )?;
+        let ed25519_manager =
+            crate::core::crypto::encrypted_storage::EncryptedEd25519KeyManager::load_from_file(
+                &keys_file,
+            )?;
+
+        // Check if Ed25519 key exists for this FID
+        if !ed25519_manager.has_key(fid) {
+            anyhow::bail!("❌ No Ed25519 key found for FID: {}\n💡 Please generate or import an Ed25519 key for this FID first:\n   castorix hub key generate {}\n   castorix hub key import {}", fid, fid, fid);
+        }
+
+        // Get the Ed25519 signing key
+        let signing_key = ed25519_manager.get_signing_key(fid, password)?;
+
+        // Create MessageData with cast add body
+        let mut message_data = MessageData::new();
+        // Use Farcaster time (seconds since January 1, 2021)
+        const FARCASTER_EPOCH: u64 = 1609459200; // January 1, 2021 UTC in seconds
+        let current_timestamp = Utc::now().timestamp() as u64;
+        let farcaster_timestamp = (current_timestamp - FARCASTER_EPOCH) as u32;
+
+        message_data.set_field_type(MessageType::MESSAGE_TYPE_CAST_ADD);
+        message_data.set_fid(fid);
+        message_data.set_timestamp(farcaster_timestamp);
+        message_data.set_network(FarcasterNetwork::FARCASTER_NETWORK_MAINNET);
+
+        let mut cast_body = CastAddBody::new();
+        cast_body.set_text(text);
+        cast_body.set_field_type(CastType::CAST);
+
+        if let Some(parent_cast) = parent_cast_id {
+            let clean_hash = parent_cast
+                .hash
+                .strip_prefix("0x")
+                .unwrap_or(&parent_cast.hash);
+            let hash_bytes = hex::decode(clean_hash)
+                .with_context(|| "Failed to decode parent cast hash from hex")?;
+
+            if hash_bytes.len() != 20 {
+                anyhow::bail!("❌ Parent cast hash must be 20 bytes (40 hex chars)");
+            }
+
+            let mut proto_cast_id = ProtoCastId::new();
+            proto_cast_id.set_fid(parent_cast.fid);
+            proto_cast_id.set_hash(hash_bytes);
+            cast_body.set_parent_cast_id(proto_cast_id);
+        }
+
+        if let Some(parent_url) = parent_url {
+            cast_body.set_parent_url(parent_url);
+        }
+
+        if !embed_urls.is_empty() {
+            let mut embeds = RepeatedField::new();
+            for url in embed_urls {
+                let mut embed = Embed::new();
+                embed.set_url(url);
+                embeds.push(embed);
+            }
+            cast_body.set_embeds(embeds);
+        }
+
+        message_data.set_cast_add_body(cast_body);
+
+        // Create the Message wrapper
+        let mut message = Message::new();
+        message.set_data(message_data);
+
+        // Calculate hash of the MessageData (using first 20 bytes of blake3 hash like Snapchain)
+        let message_data_bytes = message.get_data().write_to_bytes()?;
+        let hash = blake3::hash(&message_data_bytes);
+        let hash_20 = hash.as_bytes()[..20].to_vec();
+        message.set_hash(hash_20.clone());
+        message.set_hash_scheme(HashScheme::HASH_SCHEME_BLAKE3);
+        message.set_signature_scheme(SignatureScheme::SIGNATURE_SCHEME_ED25519);
+
+        // Sign the hash using the Ed25519 signing key
+        let signature = signing_key.sign(&hash_20);
+        message.set_signature(signature.to_bytes().to_vec());
+        message.set_signer(signing_key.verifying_key().to_bytes().to_vec());
+
+        // Set data_bytes field (required by Farcaster Hub)
+        // According to Snapchain docs, when dataBytes is set, data should be undefined
+        message.set_data_bytes(message_data_bytes);
+        message.clear_data(); // Clear the data field as per Snapchain requirements
+
+        self.submit_message(&message).await
+    }
+
     /// Submit a username proof to Farcaster Hub (legacy method using Ethereum key)
     ///
     /// # Arguments
@@ -382,13 +521,24 @@ impl FarcasterClient {
         let response_text = response.text().await?;
 
         if status.is_success() {
-            let hub_response: HubResponse =
-                serde_json::from_str(&response_text).unwrap_or_else(|_| HubResponse {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&response_text) {
+                let message = value
+                    .get("message")
+                    .and_then(|msg| msg.as_str())
+                    .map(|msg| msg.to_string());
+                let data = value.get("data").cloned().or(Some(value));
+                Ok(HubResponse {
+                    success: true,
+                    message,
+                    data,
+                })
+            } else {
+                Ok(HubResponse {
                     success: true,
                     message: Some("Message submitted successfully".to_string()),
                     data: Some(serde_json::json!({ "raw_response": response_text })),
-                });
-            Ok(hub_response)
+                })
+            }
         } else {
             Err(anyhow::anyhow!(
                 "Farcaster Hub returned error {}: {}",
